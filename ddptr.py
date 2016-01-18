@@ -2,7 +2,7 @@
 #
 # Copyright 2016 Philipp Winter <phw@nymity.ch>
 #
-# This file is part of dnstracert
+# This file is part of ddptr.
 #
 # exitmap is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
