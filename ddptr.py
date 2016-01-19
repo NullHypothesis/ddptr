@@ -29,9 +29,11 @@ import argparse
 import subprocess
 import collections
 
+import pyasn
 import scapy.all as scapy
 
 DIG_OUTPUT_MATCH = r"^;; Received \d+ bytes from ([^\(]+)\([^ ]*\) in \d+ ms$"
+IPASN_URL = "https://github.com/hadiasghari/pyasn"
 
 Host = collections.namedtuple("Host", "addr port")
 
@@ -46,6 +48,11 @@ def parse_arguments():
 
     parser.add_argument("fqdn", metavar="FQDN", type=str, nargs="+",
                         help="A fully qualified domain name.")
+
+    parser.add_argument("asn_db", metavar="ASN_DB", type=str,
+                        help="The ASN database that is needed to map IP "
+                             "addresses to autonomous system numbers.  For "
+                             "more details, see: <%s>" % IPASN_URL)
 
     parser.add_argument("-g", "--graph-output", type=str, default=None,
                         help="Name template of the SVG files that visualise "
@@ -63,6 +70,49 @@ def parse_arguments():
                              "delegation path.  The default is 8.8.8.8.")
 
     return parser.parse_args()
+
+
+def asns_in_traceroute(traceroute, asndb):
+    """
+    Extract ASNs of hops in traceroute and return them as set.
+    """
+
+    asns = set()
+
+    for sent, recvd in traceroute:
+
+        # Is the response an ICMP TTL Exceeded packet?
+
+        if recvd.haslayer(scapy.ICMP) and recvd.payload.type == 11:
+            asn, _ = asndb.lookup(recvd.src)
+            if asn is not None:
+                asns.add(asn)
+
+    return asns
+
+
+def asn_comparison(dns_asns, web_asns):
+    """
+    Analyse overlap between traversed DNS and web ASNs.
+    """
+
+    dns_asns = set([str(x) for x in dns_asns])
+    web_asns = set([str(x) for x in web_asns])
+
+    log.info("%d ASNs in DNS hops: %s" % (len(dns_asns), ",".join(dns_asns)))
+    log.info("%d ASNs in web hops: %s" % (len(web_asns), ",".join(web_asns)))
+
+    intersection = web_asns.intersection(dns_asns)
+    log.info("%d intersections between web and DNS ASNs: %s" %
+             (len(intersection), ",".join(intersection)))
+
+    dns_only = dns_asns.difference(web_asns)
+    log.info("%d ASNs in DNS but not in web ASNs: %s" %
+             (len(dns_only), ",".join(dns_only)))
+
+    web_only = web_asns.difference(dns_asns)
+    log.info("%d ASNs in web but not in DNS ASNs: %s" %
+             (len(web_only), ",".join(web_only)))
 
 
 def traceroute_dns_servers(hosts, fqdn):
@@ -148,6 +198,7 @@ def main():
     Entry point.
     """
 
+    asndb = None
     args = parse_arguments()
     log.basicConfig(level=log.getLevelName(args.verbosity.upper()))
     log.debug("Set verbosity level to: %s" % args.verbosity)
@@ -155,6 +206,12 @@ def main():
     if os.geteuid() != 0:
         log.critical("We need root privileges to run traceroutes.")
         return 1
+
+    try:
+        asndb = pyasn.pyasn(args.asn_db)
+    except Exception as err:
+        log.critical("Couldn't load ASN DB file '%s': %s" % (args.asn_db, err))
+        sys.exit(1)
 
     for fqdn in args.fqdn:
 
@@ -168,17 +225,22 @@ def main():
         log.info("DNS servers in dig trace: %s" %
                  ", ".join([h.addr for h in servers]))
 
-        trs, _ = traceroute_dns_servers(servers, fqdn)
+        dns_trs, _ = traceroute_dns_servers(servers, fqdn)
         if args.graph_output is not None:
             file_name = "dns-servers_%s" % args.graph_output
-            trs.graph(target="> %s" % file_name)
+            dns_trs.graph(target="> %s" % file_name)
             log.info("Wrote DNS servers traceroute graph to: %s" % file_name)
 
-        trs, _ = traceroute_web_server(fqdn)
+        web_tr, _ = traceroute_web_server(fqdn)
         if args.graph_output is not None:
             file_name = "web-server_%s" % args.graph_output
-            trs.graph(target="> %s" % file_name)
+            web_tr.graph(target="> %s" % file_name)
             log.info("Wrote web server traceroute graph to: %s" % file_name)
+
+        log.info("Now comparing ASNs from both traceroute types.")
+        dns_asns = asns_in_traceroute(dns_trs, asndb)
+        web_asns = asns_in_traceroute(web_tr, asndb)
+        asn_comparison(dns_asns, web_asns)
 
     return 0
 
