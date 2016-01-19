@@ -200,7 +200,9 @@ def main():
 
     asndb = None
     args = parse_arguments()
-    log.basicConfig(level=log.getLevelName(args.verbosity.upper()))
+    log.basicConfig(level=log.getLevelName(args.verbosity.upper()),
+                    format="%(asctime)s [%(levelname)s]: %(message)s")
+
     log.debug("Set verbosity level to: %s" % args.verbosity)
 
     if os.geteuid() != 0:
