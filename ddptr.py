@@ -48,9 +48,9 @@ def parse_arguments():
                         help="A fully qualified domain name.")
 
     parser.add_argument("-g", "--graph-output", type=str, default=None,
-                        help="Name template of the SVG file that visualises "
+                        help="Name template of the SVG files that visualise "
                              "the traceroutes.  The name will be prefixed "
-                             "with the FQDN.")
+                             "with `dns-servers_' and `web-server_'.")
 
     parser.add_argument("-v", "--verbosity", type=str, default="info",
                         help="Minimum verbosity level for logging.  "
@@ -65,9 +65,9 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def traceroute_hosts(hosts, fqdn):
+def traceroute_dns_servers(hosts, fqdn):
     """
-    Run UDP traceroutes to the given hosts, and use FQDN in the DNS requests.
+    Run UDP traceroutes to the given DNS servers, using FQDN in DNS requests.
     """
 
     log.info("Running UDP traceroutes to %d servers." % len(hosts))
@@ -78,6 +78,16 @@ def traceroute_hosts(hosts, fqdn):
     ans, unans = scapy.traceroute(addrs, l4=udp_datagram/dns_msg)
 
     return ans, unans
+
+
+def traceroute_web_server(fqdn):
+    """
+    Run TCP traceroute to FQDN, using port 80.
+    """
+
+    log.info("Running TCP traceroute to port 80 of: %s" % fqdn)
+
+    return scapy.traceroute(fqdn, dport=80)
 
 
 def extract_servers(dig_output, dns_server):
@@ -158,11 +168,17 @@ def main():
         log.info("DNS servers in dig trace: %s" %
                  ", ".join([h.addr for h in servers]))
 
-        trs, _ = traceroute_hosts(servers, fqdn)
+        trs, _ = traceroute_dns_servers(servers, fqdn)
         if args.graph_output is not None:
-            file_name = "%s-%s" % (fqdn, args.graph_output)
+            file_name = "dns-servers_%s" % args.graph_output
             trs.graph(target="> %s" % file_name)
-            log.info("Wrote traceroute graph to: %s" % file_name)
+            log.info("Wrote DNS servers traceroute graph to: %s" % file_name)
+
+        trs, _ = traceroute_web_server(fqdn)
+        if args.graph_output is not None:
+            file_name = "web-server_%s" % args.graph_output
+            trs.graph(target="> %s" % file_name)
+            log.info("Wrote web server traceroute graph to: %s" % file_name)
 
     return 0
 
