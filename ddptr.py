@@ -113,9 +113,12 @@ def trace_fqdn(fqdn, dns_server):
     cmd = ["dig", "@" + dns_server, "+trace", fqdn]
     try:
         output = subprocess.check_output(cmd)
-    except Exception as err:
-        log.critical(err)
-        sys.exit(2)
+    except OSError as err:
+        if err.errno == os.errno.ENOENT:
+            log.critical("Command `dig' not found.  Install `dnsutils'?")
+            sys.exit(2)
+        log.critical("Error while running `dig': %s: " % err)
+        sys.exit(3)
 
     return output
 
