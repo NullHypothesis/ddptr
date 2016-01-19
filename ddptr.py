@@ -80,7 +80,7 @@ def traceroute_hosts(hosts, fqdn):
     return ans, unans
 
 
-def extract_servers(dig_output):
+def extract_servers(dig_output, dns_server):
     """
     Extract and return DNS server IP addresses from dig's trace output.
     """
@@ -98,6 +98,16 @@ def extract_servers(dig_output):
         log.debug("Match found: %s" % match.group(1))
         host_tuple = match.group(1).split("#")
         hosts.append(Host(*host_tuple))
+
+    # Remove system DNS as it's just there to help.
+
+    system_dns = Host(dns_server, "53")
+    log.debug("Removing system DNS %s from server list." % str(system_dns))
+    try:
+        hosts.remove(system_dns)
+    except ValueError as err:
+        log.warning("Couldn't remove system DNS %s from list: %s" %
+                    (system_dns, err))
 
     return hosts
 
@@ -144,7 +154,7 @@ def main():
         output = output_bytes.decode("utf-8")
         log.debug("dig output: %s" % output)
 
-        servers = extract_servers(output)
+        servers = extract_servers(output, args.dns_server)
         log.info("DNS servers in dig trace: %s" %
                  ", ".join([h.addr for h in servers]))
 
