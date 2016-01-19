@@ -58,6 +58,10 @@ def parse_arguments():
                              "warning, error, critical).  The default is "
                              "`info'.")
 
+    parser.add_argument("-d", "--dns-server", type=str, default="8.8.8.8",
+                        help="The DNS server that is used do determine the "
+                             "delegation path.  The default is 8.8.8.8.")
+
     return parser.parse_args()
 
 
@@ -98,15 +102,17 @@ def extract_servers(dig_output):
     return hosts
 
 
-def trace_fqdn(fqdn):
+def trace_fqdn(fqdn, dns_server):
     """
     Let dig determine the DNS delegation path for a given FQDN.
     """
 
-    log.info("Tracing delegation path for FQDN: %s" % fqdn)
+    log.info("Tracing delegation path for FQDN %s using %s." %
+             (fqdn, dns_server))
 
+    cmd = ["dig", "@" + dns_server, "+trace", fqdn]
     try:
-        output = subprocess.check_output(["dig", "@8.8.8.8", "+trace", fqdn])
+        output = subprocess.check_output(cmd)
     except Exception as err:
         log.critical(err)
         sys.exit(2)
@@ -131,7 +137,7 @@ def main():
 
         log.info("Now handling FQDN: %s" % fqdn)
 
-        output_bytes = trace_fqdn(fqdn)
+        output_bytes = trace_fqdn(fqdn, args.dns_server)
         output = output_bytes.decode("utf-8")
         log.debug("dig output: %s" % output)
 
