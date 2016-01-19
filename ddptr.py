@@ -125,7 +125,7 @@ def traceroute_dns_servers(hosts, fqdn):
     addrs = [host.addr for host in hosts]
     udp_datagram = scapy.UDP(sport=scapy.RandShort())
     dns_msg = scapy.DNS(qd=scapy.DNSQR(qname=fqdn))
-    ans, unans = scapy.traceroute(addrs, l4=udp_datagram/dns_msg)
+    ans, unans = scapy.traceroute(addrs, l4=udp_datagram/dns_msg, verbose=0)
 
     return ans, unans
 
@@ -137,7 +137,7 @@ def traceroute_web_server(fqdn):
 
     log.info("Running TCP traceroute to port 80 of: %s" % fqdn)
 
-    return scapy.traceroute(fqdn, dport=80)
+    return scapy.traceroute(fqdn, dport=80, verbose=0)
 
 
 def extract_servers(dig_output, dns_server):
