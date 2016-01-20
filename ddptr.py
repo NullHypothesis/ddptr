@@ -38,6 +38,16 @@ IPASN_URL = "https://github.com/hadiasghari/pyasn"
 Host = collections.namedtuple("Host", "addr port")
 
 
+class Stats(object):
+    def __init__(self):
+        self.dns_asns = 0
+        self.web_asns = 0
+        self.dns_only = 0
+        self.web_only = 0
+
+stats = Stats()
+
+
 def parse_arguments():
     """
     Parse command line arguments.
@@ -46,8 +56,14 @@ def parse_arguments():
     desc = "DNS delegation path traceroute"
     parser = argparse.ArgumentParser(description=desc)
 
-    parser.add_argument("fqdn", metavar="FQDN", type=str, nargs="+",
-                        help="A fully qualified domain name.")
+    group = parser.add_mutually_exclusive_group(required=True)
+
+    group.add_argument("--fqdn-file", type=str, default=None,
+                       help="A file containing fully qualified domain names, "
+                            "one per line.")
+
+    group.add_argument("--fqdn", type=str, default=None,
+                       help="A fully qualified domain name.")
 
     parser.add_argument("asn_db", metavar="ASN_DB", type=str,
                         help="The ASN database that is needed to map IP "
@@ -70,6 +86,26 @@ def parse_arguments():
                              "delegation path.  The default is 8.8.8.8.")
 
     return parser.parse_args()
+
+
+def load_fqdns(file_name):
+    """
+    Load FQDNs from the given file, one per line.
+    """
+
+    fqdns = []
+
+    try:
+        with open(file_name, "r") as fqdn_file:
+            for line in fqdn_file:
+                fqdns.append(line.strip())
+    except IOError as err:
+        log.critical("Couldn't open file %s: %s" % (file_name, err))
+        sys.exit(1)
+
+    log.info("Loaded %d FQDNs from file: %s" % (len(fqdns), file_name))
+
+    return fqdns
 
 
 def asns_in_traceroute(traceroute, asndb):
@@ -114,6 +150,17 @@ def asn_comparison(dns_asns, web_asns):
     log.info("%d ASNs in web but not in DNS ASNs: %s" %
              (len(web_only), ",".join(web_only)))
 
+    log.info("dns=(%d)%s,web=(%d)%s,only-dns=(%d)%s,only-web=(%d)%s" %
+             (len(dns_asns), "|".join(dns_asns),
+              len(web_asns), "|".join(web_asns),
+              len(dns_only), "|".join(dns_only),
+              len(web_only), "|".join(web_only)))
+
+    stats.dns_asns += len(dns_asns)
+    stats.web_asns += len(web_asns)
+    stats.dns_only += len(dns_only)
+    stats.web_only += len(web_only)
+
 
 def traceroute_dns_servers(hosts, fqdn):
     """
@@ -125,9 +172,8 @@ def traceroute_dns_servers(hosts, fqdn):
     addrs = [host.addr for host in hosts]
     udp_datagram = scapy.UDP(sport=scapy.RandShort())
     dns_msg = scapy.DNS(qd=scapy.DNSQR(qname=fqdn))
-    ans, unans = scapy.traceroute(addrs, l4=udp_datagram/dns_msg, verbose=0)
 
-    return ans, unans
+    return scapy.traceroute(addrs, l4=udp_datagram/dns_msg, verbose=0)
 
 
 def traceroute_web_server(fqdn):
@@ -215,9 +261,14 @@ def main():
         log.critical("Couldn't load ASN DB file '%s': %s" % (args.asn_db, err))
         sys.exit(1)
 
-    for fqdn in args.fqdn:
+    if args.fqdn_file:
+        fqdns = load_fqdns(args.fqdn_file)
+    else:
+        fqdns = [args.fqdn]
 
-        log.info("Now handling FQDN: %s" % fqdn)
+    for i, fqdn in enumerate(fqdns):
+
+        log.info("Now handling FQDN %d of %d: %s" % (i+1, len(fqdns), fqdn))
 
         output_bytes = trace_fqdn(fqdn, args.dns_server)
         output = output_bytes.decode("utf-8")
@@ -227,13 +278,21 @@ def main():
         log.info("DNS servers in dig trace: %s" %
                  ", ".join([h.addr for h in servers]))
 
-        dns_trs, _ = traceroute_dns_servers(servers, fqdn)
+        try:
+            dns_trs, _ = traceroute_dns_servers(servers, fqdn)
+        except Exception as err:
+            log.warning("Couldn't run traceroute: %s" % err)
+            continue
         if args.graph_output is not None:
             file_name = "dns-servers_%s" % args.graph_output
             dns_trs.graph(target="> %s" % file_name)
             log.info("Wrote DNS servers traceroute graph to: %s" % file_name)
 
-        web_tr, _ = traceroute_web_server(fqdn)
+        try:
+            web_tr, _ = traceroute_web_server(fqdn)
+        except Exception as err:
+            log.warning("Couldn't run traceroute: %s" % err)
+            continue
         if args.graph_output is not None:
             file_name = "web-server_%s" % args.graph_output
             web_tr.graph(target="> %s" % file_name)
@@ -244,7 +303,11 @@ def main():
         web_asns = asns_in_traceroute(web_tr, asndb)
         asn_comparison(dns_asns, web_asns)
 
+    log.info("Global stats: dns_asns=%d web_asns=%d dns_only=%d web_only=%d" %
+             (stats.dns_asns, stats.web_asns, stats.dns_only, stats.web_only))
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
