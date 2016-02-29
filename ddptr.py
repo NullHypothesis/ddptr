@@ -225,6 +225,7 @@ def trace_fqdn(fqdn, dns_server):
 
     log.info("Tracing delegation path for FQDN %s using %s." %
              (fqdn, dns_server))
+    output = ""
 
     cmd = ["dig", "@" + dns_server, "+trace", fqdn]
     try:
@@ -235,6 +236,8 @@ def trace_fqdn(fqdn, dns_server):
             sys.exit(2)
         log.critical("Error while running `dig': %s: " % err)
         sys.exit(3)
+    except Exception as err:
+        log.critical("Unknown error while running `dig': %s: " % err)
 
     return output
 
