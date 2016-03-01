@@ -40,10 +40,8 @@ Host = collections.namedtuple("Host", "addr port")
 
 class Stats(object):
     def __init__(self):
-        self.dns_asns = 0
-        self.web_asns = 0
-        self.dns_only = 0
-        self.web_only = 0
+        self.dns_asns = []
+        self.web_asns = []
 
 stats = Stats()
 
@@ -110,10 +108,10 @@ def load_fqdns(file_name):
 
 def asns_in_traceroute(traceroute, asndb):
     """
-    Extract ASNs of hops in traceroute and return them as set.
+    Extract ASNs of hops in traceroute and return them as list.
     """
 
-    asns = set()
+    asns = []
 
     for sent, recvd in traceroute:
 
@@ -122,7 +120,7 @@ def asns_in_traceroute(traceroute, asndb):
         if recvd.haslayer(scapy.ICMP) and recvd.payload.type == 11:
             asn, _ = asndb.lookup(recvd.src)
             if asn is not None:
-                asns.add(asn)
+                asns.append(asn)
 
     return asns
 
@@ -155,11 +153,6 @@ def asn_comparison(dns_asns, web_asns):
               len(web_asns), "|".join(web_asns),
               len(dns_only), "|".join(dns_only),
               len(web_only), "|".join(web_only)))
-
-    stats.dns_asns += len(dns_asns)
-    stats.web_asns += len(web_asns)
-    stats.dns_only += len(dns_only)
-    stats.web_only += len(web_only)
 
 
 def traceroute_dns_servers(hosts, fqdn):
@@ -242,6 +235,37 @@ def trace_fqdn(fqdn, dns_server):
     return output
 
 
+def determine_stats():
+    """
+    Determine and log relevant statistics.
+    """
+
+    log.info("Total traversed DNS ASes: %d, web ASes: %d (%.2f%%)" %
+             (len(stats.dns_asns),
+              len(stats.web_asns),
+              float(len(stats.web_asns)) / len(stats.dns_asns) * 100))
+
+    # Turn ASNs into sets, to make them unique.
+
+    dns_asns = set(stats.dns_asns)
+    web_asns = set(stats.web_asns)
+
+    log.info("Unique DNS ASNs: %s" % ",".join([str(x) for x in dns_asns]))
+    log.info("Unique web ASNs: %s" % ",".join([str(x) for x in web_asns]))
+    log.info("Total unique traversed DNS ASes: %d, total unique traversed "
+             "web ASes: %d (%.2f%%)" %
+             (len(dns_asns), len(web_asns),
+              float(len(web_asns)) / len(dns_asns) * 100))
+
+    dns_only = dns_asns.difference(web_asns)
+    web_only = web_asns.difference(dns_asns)
+    web_pct = float(len(web_only)) / len(dns_only) * 100
+
+    log.info("Unique ASes traversed only for DNS: %d, unique ASes only "
+             "traversed for web: %d (%.2f%%)" %
+             (len(dns_only), len(web_only), web_pct))
+
+
 def main():
     """
     Entry point.
@@ -304,10 +328,12 @@ def main():
         log.info("Now comparing ASNs from both traceroute types.")
         dns_asns = asns_in_traceroute(dns_trs, asndb)
         web_asns = asns_in_traceroute(web_tr, asndb)
+        stats.dns_asns += dns_asns
+        stats.web_asns += web_asns
+
         asn_comparison(dns_asns, web_asns)
 
-    log.info("Global stats: dns_asns=%d web_asns=%d dns_only=%d web_only=%d" %
-             (stats.dns_asns, stats.web_asns, stats.dns_only, stats.web_only))
+    determine_stats()
 
     return 0
 
