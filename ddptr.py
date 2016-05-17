@@ -130,6 +130,11 @@ def asn_comparison(dns_asns, web_asns):
     Analyse overlap between traversed DNS and web ASNs.
     """
 
+    if len(dns_asns) == 0 or len(web_asns) == 0:
+        log.warning("Invalid data length (dns=%d, web=%d)" % (len(dns_asns),
+                                                              len(web_asns)))
+        return
+
     dns_asns = set([str(x) for x in dns_asns])
     web_asns = set([str(x) for x in web_asns])
 
