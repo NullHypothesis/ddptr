@@ -154,6 +154,9 @@ def asn_comparison(dns_asns, web_asns):
               len(dns_only), "|".join(dns_only),
               len(web_only), "|".join(web_only)))
 
+    log.info("Exposure is %.3f" % (float(len(dns_only)) /
+                                   len(dns_asns.union(web_asns))))
+
 
 def traceroute_dns_servers(hosts, fqdn):
     """
