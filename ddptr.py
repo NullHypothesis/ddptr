@@ -245,7 +245,7 @@ def determine_stats():
               len(stats.web_asns),
               float(len(stats.web_asns)) / len(stats.dns_asns) * 100))
 
-    # Turn ASNs into sets, to make them unique.
+    # Turn ASN lists into sets, to remove duplicates.
 
     dns_asns = set(stats.dns_asns)
     web_asns = set(stats.web_asns)
